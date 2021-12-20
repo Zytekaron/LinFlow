@@ -46,26 +46,17 @@ void handle_event(
             break;
         }
 
-        char sbuf[17];
-        if (len > 0 && isprint(buf[0])) {
-            buf[len] = 0;
-            std::sprintf(sbuf, "%s", buf);
-        } else {
-            std::sprintf(sbuf, "%d", ks);
-        }
+        // char sbuf[17];
+        // if (len > 0 && isprint(buf[0])) {
+        //     buf[len] = 0;
+        //     std::sprintf(sbuf, "%s", buf);
+        // } else {
+        //     std::sprintf(sbuf, "%d", ks);
+        // }
 
         if (linmod_down) {
-            go_pass_key(ks, sbuf);
+            go_pass_key(ks, XKeysymToString(ks));
         }
-
-//        if (IsModifierKey(ks)) {
-//            std::cout << "IS_CTRL " << (ks == XK_Control_L) << " " << (ks == XK_Control_R) << std::endl;
-//            std::cout << "Pressed " << sbuf << " (modifier)" << std::endl;
-//        } else {
-//            std::cout << "Pressed " << sbuf << std::endl;
-//        }
-
-        // std::cout << "[C++] " << XKeysymToString(XkbKeycodeToKeysym(QX11Info::display(), code, 0, 0) ) << std::endl;
 
         break;
 
