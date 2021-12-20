@@ -88,9 +88,10 @@ func runMacro() {
 	stored := clipboard.Read(clipboard.FmtText)
 
 	clipboard.Write(clipboard.FmtText, macros[macro])
-
+	time.Sleep(10 * time.Millisecond)
 	simulatePaste()
 
+	time.Sleep(10 * time.Millisecond)
 	clipboard.Write(clipboard.FmtText, stored)
 
 }
@@ -140,7 +141,7 @@ func simulatePaste() {
 
 	err := kb.Press()
 	if err != nil {
-		log.Println(err)
+		log.Println("OH FUCK", err)
 		return
 	}
 
@@ -148,7 +149,7 @@ func simulatePaste() {
 
 	err = kb.Release()
 	if err != nil {
-		log.Println(err)
+		log.Println("OH FUCK", err)
 		return
 	}
 }
