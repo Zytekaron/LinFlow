@@ -1,6 +1,8 @@
 #include <iostream>
 #include <string>
 #include <unordered_set>
+#include <chrono>
+#include <thread>
 
 #include "kbd.hpp"
 
@@ -55,12 +57,13 @@ void handle_event(
         // }
 
         if (linmod_down) {
-            go_pass_key(ks, XKeysymToString(ks));
+            native_pass_key(ks, XKeysymToString(ks));
         }
 
         break;
 
     case KeyRelease:
+        std::this_thread::sleep_for(std::chrono::microseconds(1));
         if (XEventsQueued(d, QueuedAfterReading)) {
             XEvent nev;
             XPeekEvent(d, &nev);
@@ -82,7 +85,7 @@ void handle_event(
             std::cout << "LINMOD released\n";
 #endif
 
-            go_handle_buffer();
+            native_handle_buffer();
         }
 
         break;

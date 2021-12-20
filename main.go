@@ -4,22 +4,30 @@ package main
 // #cgo LDFLAGS: -L/usr/lib/ -lstdc++ -lX11
 // #include "kbd.hpp"
 import "C"
+import (
+	"github.com/micmonay/keybd_event"
+	"golang.design/x/clipboard"
+	"log"
+	"strings"
+	"sync"
+	"time"
+)
 
 const (
 	KeyLShift    = 0xffe1 + iota // Left Shift
-	KeyRShift    = 0xffe2        // Right shift
-	KeyLCtrl     = 0xffe3        // Left control
-	KeyRCtrl     = 0xffe4        // Right control
-	KeyCapsLock  = 0xffe5        // Caps lock
-	KeyShiftLock = 0xffe6        // Shift lock
-	KeyLMeta     = 0xffe7        // Left meta
-	KeyRMeta     = 0xffe8        // Right meta
-	KeyLAlt      = 0xffe9        // Left alt
-	KeyRAlt      = 0xffea        // Right alt
-	KeyLSuper    = 0xffeb        // Left super
-	KeyRSuper    = 0xffec        // Right super
-	KeyLHyper    = 0xffed        // Left hyper
-	KeyRHyper    = 0xffee        // Right hyper
+	KeyRShift                    // Right shift
+	KeyLCtrl                     // Left control
+	KeyRCtrl                     // Right control
+	KeyCapsLock                  // Caps lock
+	KeyShiftLock                 // Shift lock
+	KeyLMeta                     // Left meta
+	KeyRMeta                     // Right meta
+	KeyLAlt                      // Left alt
+	KeyRAlt                      // Right alt
+	KeyLSuper                    // Left super
+	KeyRSuper                    // Right super
+	KeyLHyper                    // Left hyper
+	KeyRHyper                    // Right hyper
 )
 
 type Key struct {
@@ -27,31 +35,120 @@ type Key struct {
 	Name string
 }
 
+var macros = map[string][]byte{}
 var buffer []Key
+var modeSet bool
+var dataMux sync.Mutex // for buffer, modeSet
+
+var kb keybd_event.KeyBonding
+
+func init() {
+	var err error
+	kb, err = keybd_event.NewKeyBonding()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	time.Sleep(2 * time.Second)
+}
 
 func main() {
 	C.start_hook()
 }
 
-//export go_pass_key
-func go_pass_key(keySym C.ulong, value *C.char) {
-	key := Key{
-		Code: uint32(keySym),
-		Name: C.GoString(value),
+func runMacro() {
+	dataMux.Lock()
+	defer dataMux.Unlock()
+
+	if len(buffer) == 0 {
+		return
 	}
 
-	println("[go] c passed Key:", key.Code, key.Name)
+	var buf strings.Builder
+	buf.WriteString(buffer[0].Name)
+	for i := 1; i < len(buffer); i++ {
+		buf.WriteRune('+')
+		buf.WriteString(buffer[i].Name)
+	}
 
-	buffer = append(buffer, key)
+	macro := buf.String()
+
+	if modeSet {
+		println("creating macro:", macro)
+		macros[macro] = clipboard.Read(clipboard.FmtText)
+		return
+	}
+
+	// macro does not exist or is empty
+	if len(macros[macro]) == 0 {
+		return
+	}
+
+	println("running macro", macro, "with text:", string(macros[macro]))
+
+	stored := clipboard.Read(clipboard.FmtText)
+
+	clipboard.Write(clipboard.FmtText, macros[macro])
+
+	simulatePaste()
+
+	clipboard.Write(clipboard.FmtText, stored)
+
 }
 
-//export go_handle_buffer
-func go_handle_buffer() {
-	println("[go] c called handle buffer")
+//export native_pass_key
+func native_pass_key(keySym C.ulong, value *C.char) {
+	go func() {
+		key := Key{
+			Code: uint32(keySym),
+			Name: cleanKeyName(C.GoString(value)),
+		}
+		println("native_pass_key call:", key.Code, key.Name)
 
-	for _, key := range buffer {
-		println(key.Code, "->", key.Name)
+		dataMux.Lock()
+		defer dataMux.Unlock()
+		if (keySym == KeyLCtrl || keySym == KeyRCtrl) && len(buffer) == 0 {
+			modeSet = true
+			return
+		}
+
+		buffer = append(buffer, key)
+	}()
+}
+
+//export native_handle_buffer
+func native_handle_buffer() {
+	go func() {
+		println("native_handle_buffer call")
+
+		runMacro()
+
+		dataMux.Lock()
+		defer dataMux.Unlock()
+		buffer = nil
+		modeSet = false
+	}()
+}
+
+func cleanKeyName(name string) string {
+	name = strings.Replace(name, "KP_macros[macro]", "", 1)
+	return name
+}
+
+func simulatePaste() {
+	kb.SetKeys(keybd_event.VK_V)
+	kb.HasCTRL(true)
+
+	err := kb.Press()
+	if err != nil {
+		log.Println(err)
+		return
 	}
 
-	buffer = nil
+	time.Sleep(time.Microsecond)
+
+	err = kb.Release()
+	if err != nil {
+		log.Println(err)
+		return
+	}
 }

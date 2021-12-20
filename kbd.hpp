@@ -3,8 +3,8 @@ extern "C" {
 #endif
 
 // Exported Go functions
-void go_pass_key(unsigned long, char*);
-void go_handle_buffer();
+void native_pass_key(unsigned long, char*);
+void native_handle_buffer();
 
 
 // KBD functions
