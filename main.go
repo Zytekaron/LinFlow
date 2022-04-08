@@ -5,12 +5,12 @@ package main
 // #include "kbd.hpp"
 import "C"
 import (
-	"github.com/micmonay/keybd_event"
-	"golang.design/x/clipboard"
+	"fmt"
+	"linflow/src/config"
+	"linflow/src/macro"
 	"log"
 	"strings"
 	"sync"
-	"time"
 )
 
 const (
@@ -30,126 +30,139 @@ const (
 	KeyRHyper                    // Right hyper
 )
 
+var modKeys = map[C.ulong]bool{
+	KeyLShift:    true,
+	KeyRShift:    true,
+	KeyLCtrl:     true,
+	KeyRCtrl:     true,
+	KeyCapsLock:  true,
+	KeyShiftLock: true,
+	KeyLMeta:     true,
+	KeyRMeta:     true,
+	KeyLAlt:      true,
+	KeyRAlt:      true,
+	KeyLSuper:    true,
+	KeyRSuper:    true,
+	KeyLHyper:    true,
+	KeyRHyper:    true,
+}
+
 type Key struct {
 	Code uint32
 	Name string
 }
 
-var macros = map[string][]byte{}
-var buffer []Key
-var modeSet bool
-var dataMux sync.Mutex // for buffer, modeSet
+func (k *Key) String() string {
+	return k.Name
+}
 
-var kb keybd_event.KeyBonding
+var cfg *config.Config
+var configDirs = []string{
+	"/etc/linflow/config.yml",
+	"config.yml",
+}
+
+var macros = map[string]*macro.Macro{}
+var buffer []Key
+
+//var modeSet bool
+var bufferMux sync.Mutex
 
 func init() {
 	var err error
-	kb, err = keybd_event.NewKeyBonding()
+	cfg, err = config.Load(configDirs)
 	if err != nil {
-		log.Fatalln(err)
+		log.Fatal(err)
 	}
-	time.Sleep(2 * time.Second)
 }
 
 func main() {
-	C.start_hook()
+	for _, m := range cfg.Macros {
+		fmt.Println("Loading", m.Code)
+
+		mac, err := m.ToMacro()
+		if err != nil {
+			fmt.Println("parse", err)
+			return
+		}
+		macros[mac.Code] = mac
+	}
+
+	C.start_hook(C.int(cfg.LinMod))
 }
 
-func runMacro() {
-	dataMux.Lock()
-	defer dataMux.Unlock()
+func execute() {
+	bufferMux.Lock()
+	defer bufferMux.Unlock()
 
 	if len(buffer) == 0 {
 		return
 	}
 
-	var buf strings.Builder
-	buf.WriteString(buffer[0].Name)
-	for i := 1; i < len(buffer); i++ {
-		buf.WriteRune('+')
-		buf.WriteString(buffer[i].Name)
-	}
-
-	macro := buf.String()
-
-	if modeSet {
-		println("creating macro:", macro)
-		macros[macro] = clipboard.Read(clipboard.FmtText)
+	name := keysToString(buffer)
+	mac, ok := macros[name]
+	if !ok {
 		return
 	}
 
-	// macro does not exist or is empty
-	if len(macros[macro]) == 0 {
-		return
+	fmt.Println("executing macro:", name)
+	err := mac.Execute()
+	if err != nil {
+		log.Println(err)
 	}
-
-	println("running macro", macro, "with text:", string(macros[macro]))
-
-	stored := clipboard.Read(clipboard.FmtText)
-
-	clipboard.Write(clipboard.FmtText, macros[macro])
-	time.Sleep(10 * time.Millisecond)
-	simulatePaste()
-
-	time.Sleep(10 * time.Millisecond)
-	clipboard.Write(clipboard.FmtText, stored)
-
 }
 
 //export native_pass_key
+//goland:noinspection GoSnakeCaseUsage
 func native_pass_key(keySym C.ulong, value *C.char) {
 	go func() {
+		// not accepting mod keys due to shifted keys like '?' is SHIFT+/
+		if modKeys[keySym] {
+			return
+		}
+
 		key := Key{
 			Code: uint32(keySym),
 			Name: cleanKeyName(C.GoString(value)),
 		}
-		println("native_pass_key call:", key.Code, key.Name)
+		fmt.Println("native_pass_key call", key.Code, key.Name)
 
-		dataMux.Lock()
-		defer dataMux.Unlock()
-		if (keySym == KeyLCtrl || keySym == KeyRCtrl) && len(buffer) == 0 {
-			modeSet = true
-			return
-		}
-
+		bufferMux.Lock()
 		buffer = append(buffer, key)
+		bufferMux.Unlock()
 	}()
 }
 
 //export native_handle_buffer
+//goland:noinspection GoSnakeCaseUsage
 func native_handle_buffer() {
 	go func() {
-		println("native_handle_buffer call")
+		fmt.Println("native_handle_buffer call")
 
-		runMacro()
+		execute()
 
-		dataMux.Lock()
-		defer dataMux.Unlock()
+		bufferMux.Lock()
+		defer bufferMux.Unlock()
 		buffer = nil
-		modeSet = false
+		//modeSet = false
 	}()
 }
 
 func cleanKeyName(name string) string {
-	name = strings.Replace(name, "KP_macros[macro]", "", 1)
-	return name
+	return strings.Replace(name, "KP_macros[macro]", "", 1)
 }
 
-func simulatePaste() {
-	kb.SetKeys(keybd_event.VK_V)
-	kb.HasCTRL(true)
-
-	err := kb.Press()
-	if err != nil {
-		log.Println("OH FUCK", err)
-		return
+func keysToString(args []Key) string {
+	if len(args) == 0 {
+		return ""
 	}
 
-	time.Sleep(time.Microsecond)
-
-	err = kb.Release()
-	if err != nil {
-		log.Println("OH FUCK", err)
-		return
+	var buf strings.Builder
+	buf.WriteString(args[0].String())
+	for i := 1; i < len(args); i++ {
+		buf.WriteString("+")
+		buf.WriteString(args[i].String())
 	}
+
+	return buf.String()
 }

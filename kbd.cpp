@@ -9,14 +9,9 @@
 extern "C" {
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
-
-// TODO CHECK IF NEED (key sym to string fncnlty)
-#include <X11/XKBlib.h>
 }
 
-const int LINMOD = 269025089;
-
-void start_hook();
+int LINMOD = -1;
 
 std::unordered_set<int> set;
 bool linmod_down = false;
@@ -26,99 +21,80 @@ char buf[17];
 XComposeStatus comp;
 int revert;
 
-void handle_event(
-    XEvent ev, Display* d, Window root, Window curFocus, KeySym ks) {
+void handle_event(XEvent event, Display* display, Window root, Window currentFocus, KeySym keySym) {
     int len;
 
-    switch (ev.type) {
+    switch (event.type) {
     case KeyPress:
-        len = XLookupString(&ev.xkey, buf, 16, &ks, &comp);
+        len = XLookupString(&event.xkey, buf, 16, &keySym, &comp);
         // prevent held key spam
-        if (set.find(ks) != set.end()) break;
-        set.insert(ks);
+        if (set.find(keySym) != set.end()) {
+            break;
+        }
+        set.insert(keySym);
 
-        if (ks == LINMOD) {
-            XGrabKeyboard(
-                d, curFocus, True, GrabModeAsync, GrabModeAsync, CurrentTime);
+        if (keySym == LINMOD) {
+            XGrabKeyboard(display, currentFocus, True, GrabModeAsync, GrabModeAsync, CurrentTime);
             linmod_down = true;
-
-#ifdef DEBUG
-            std::cout << "LINMOD pressed\n";
-#endif
             break;
         }
 
-        // char sbuf[17];
-        // if (len > 0 && isprint(buf[0])) {
-        //     buf[len] = 0;
-        //     std::sprintf(sbuf, "%s", buf);
-        // } else {
-        //     std::sprintf(sbuf, "%d", ks);
-        // }
-
         if (linmod_down) {
-            native_pass_key(ks, XKeysymToString(ks));
+            native_pass_key(keySym, XKeysymToString(keySym));
         }
 
         break;
 
     case KeyRelease:
         std::this_thread::sleep_for(std::chrono::microseconds(1));
-        if (XEventsQueued(d, QueuedAfterReading)) {
-            XEvent nev;
-            XPeekEvent(d, &nev);
+        if (XEventsQueued(display, QueuedAfterReading)) {
+            XEvent nextEvent;
+            XPeekEvent(display, &nextEvent);
 
-            if (nev.type == KeyPress && nev.xkey.time == ev.xkey.time &&
-                nev.xkey.keycode == ev.xkey.keycode) {
+            if (nextEvent.type == KeyPress && nextEvent.xkey.time == event.xkey.time
+                && nextEvent.xkey.keycode == event.xkey.keycode) {
                 break;
             }
         }
 
-        len = XLookupString(&ev.xkey, buf, 16, &ks, &comp);
-        set.erase(ks);
+        len = XLookupString(&event.xkey, buf, 16, &keySym, &comp);
+        set.erase(keySym);
 
-        if (ks == LINMOD) {
-            XUngrabKeyboard(d, CurrentTime);
+        if (keySym == LINMOD) {
+            XUngrabKeyboard(display, CurrentTime);
             linmod_down = false;
-
-#ifdef DEBUG
-            std::cout << "LINMOD released\n";
-#endif
-
             native_handle_buffer();
         }
 
         break;
 
     case FocusOut:
-        if (curFocus != root) {
-            XSelectInput(d, curFocus, 0);
+        if (currentFocus != root) {
+            XSelectInput(display, currentFocus, 0);
         }
 
-        XGetInputFocus(d, &curFocus, &revert);
-        if (curFocus == PointerRoot) {
-            curFocus = root;
+        XGetInputFocus(display, &currentFocus, &revert);
+        if (currentFocus == PointerRoot) {
+            currentFocus = root;
         }
 
-        XSelectInput(
-            d, curFocus, KeyPressMask | KeyReleaseMask | FocusChangeMask);
+        XSelectInput(display, currentFocus, KeyPressMask | KeyReleaseMask | FocusChangeMask);
     }
 }
 
-void start_hook() {
+void start_hook(int key) {
+    LINMOD = key;
     Display* d = XOpenDisplay(NULL);
-    Window root = DefaultRootWindow(d);
-    Window curFocus;
+    Window currentFocus, root = DefaultRootWindow(d);
     KeySym ks;
 
     int revert;
-    XGetInputFocus(d, &curFocus, &revert);
-    XSelectInput(d, curFocus, KeyPressMask | KeyReleaseMask | FocusChangeMask);
+    XGetInputFocus(d, &currentFocus, &revert);
+    XSelectInput(d, currentFocus, KeyPressMask | KeyReleaseMask | FocusChangeMask);
 
     XEvent ev;
     while (true) {
         XNextEvent(d, &ev);
-
-        handle_event(ev, d, root, curFocus, ks);
+        handle_event(ev, d, root, currentFocus, ks);
     }
 }

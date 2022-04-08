@@ -6,9 +6,8 @@ extern "C" {
 void native_pass_key(unsigned long, char*);
 void native_handle_buffer();
 
-
 // KBD functions
-void start_hook();
+void start_hook(int);
 
 #ifdef __cplusplus
 }

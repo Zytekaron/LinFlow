@@ -1,0 +1,16 @@
+# The key used to activate LinFlow
+linmod: 269025089 # run the program or xev to get your own key code
+
+macros:
+  - name: 'send a message "bonk" and send the contents of your clipboard'
+    code: '1+2+3'
+    actions:
+      - TEXT bonk
+      - KEYBIND enter
+      - KEYBIND ctrl+v
+      - KEYBIND enter
+  - name: Don't ask to ask
+    code: question # '?' (SHIFT+/) see https://github.com/go-vgo/robotgo/blob/master/docs/keys.md
+    actions:
+      - TEXT <https://dontasktoask.com> :)
+      - KEYBIND enter

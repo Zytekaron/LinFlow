@@ -1,0 +1,26 @@
+# The key used to activate LinFlow
+linmod: 269025089
+
+macros:
+  - name: 'hypixel guild advertisement'
+    code: 'a+d'
+    actions:
+      - TEXT t # send some text
+      - WAIT 1s
+      - TEXT /ch a
+      - KEYBIND ctrl+v
+      - WAIT 1s
+      - KEYBIND enter
+  - name: 'say bonk var then paste clipboard'
+    code: '1+2+3'
+    actions:
+      - TEXT t/ch a
+      - KEYBIND enter
+      - KEYBIND ctrl+v
+      - KEYBIND left
+      - KEYBIND enter
+  - name: Don't ask to ask
+    code: question
+    actions:
+      - TEXT <https://dontasktoask.com> :)
+      - KEYBIND enter
